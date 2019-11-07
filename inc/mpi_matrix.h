@@ -1,7 +1,7 @@
 #ifndef MPI_MATRIX_H
 #define MPI_MATRIX_H
 
-float* roll_rows_base(float* row, int turn, int rA, int cA, int proc_cols);
+float* roll_rows_base(float* row, int turn, int rA, int cA, MPI_Comm communicator);
 
 int last_row_len(int n, int world_size);
 

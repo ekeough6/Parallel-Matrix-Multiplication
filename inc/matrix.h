@@ -4,6 +4,8 @@
 //Multiplies two matrices given that cA == rB
 float* matrix_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB);
 
+void add_matrices(float* mat_A, float* mat_B, int row, int col);
+
 //calculates the dot product of two matrices of size n
 float dot_prod(float* vec_A, float* vec_B, int n);
 

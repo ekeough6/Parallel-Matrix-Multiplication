@@ -19,6 +19,14 @@ float* matrix_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
   return resultant;
 }
 
+void add_matrices(float* mat_A, float* mat_B, int row, int col) {
+  int i,j;
+  for(i = 0; i < row; ++i) {
+    for(j = 0; j < col; ++j) {
+      mat_A[i * col + j] += mat_B[i * col + j];
+    }
+  }
+}
 
 float dot_prod(float* vec_A, float* vec_B, int n) {
   float sum = 0;

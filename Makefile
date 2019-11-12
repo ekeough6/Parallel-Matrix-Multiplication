@@ -1,12 +1,16 @@
 CC=gcc
+NVCC=nvcc
 MPICC=mpicc
 CFLAGS=-I./inc -lm
+NVCFLAGS=-c
 TESTSOURCES=src/tester.c src/matrix.c
 RINGSOURCES=src/ring_test.c src/ring.c src/matrix.c src/mpi_matrix.c
 BMRSOURCES=src/bmr.c src/matrix.c src/mpi_matrix.c src/bmr_test.c
+CUDASOURCES=src/gpu_matrix.cu
 TESTOBJECTS=$(TESTSOURCES:.c=.o)
 RINGOBJECTS=$(RINGSOURCES:.c=.o)
 BMROBJECTS=$(BMRSOURCES:.c=.o)
+CUDAOBJECTS=$(CUDASOURCES:.cu=.o)
 TESTEXEC=test
 RINGEXEC=ring
 BMREXEC=bmr
@@ -20,6 +24,19 @@ $(RINGEXEC): $(RINGSOURCES)
 
 $(BMREXEC): $(BMRSOURCES)
 	$(MPICC) $(CFLAGS) $(BMRSOURCES) -o $@ -lm
+
+$(TESTEXEC)-gpu: $(TESTSOURCES)
+	$(NVCC) $(NVCFLAGS) $(CUDASOURCES) -o $(CUDAOBJECTS)
+	$(CC) $(CFLAGS) $(TESTSOURCES) $(CUDAOBJECTS) -o $@
+
+$(RINGEXEC)-gpu: $(RINGSOURCES)
+	$(NVCC) $(NVCFLAGS) $(CUDASOURCES) -o $(CUDAOBJECTS)
+	$(MPICC) $(CFLAGS) $(RINGSOURCES) $(CUDAOBJECTS) -o $@
+
+$(BMREXEC)-gpu: $(BMRSOURCES)
+	$(NVCC) $(NVCFLAGS) $(CUDASOURCES) -o $(CUDAOBJECTS)
+	$(MPICC) $(CFLAGS) $(BMRSOURCES) $(CUDAOBJECTS) -o $@ -lm
+
 clean:
 	rm $(EXECS)
 all:

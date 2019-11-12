@@ -9,6 +9,10 @@ float* matrix_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
   }
   int i, j, k;
   float *resultant = calloc(rA * cB, sizeof(float));
+#ifdef USE_GPU
+  gpu_matrix_mult(mat_A, mat_B, resultant, rA, cA, cB);
+  return resultant;
+#else
   for(i = 0; i < rA; ++i) {
     for(j = 0; j < cB; ++j) {
       for(k = 0; k < rB; ++k) {
@@ -17,6 +21,7 @@ float* matrix_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
     }
   }
   return resultant;
+#endif
 }
 
 void add_matrices(float* mat_A, float* mat_B, int row, int col) {

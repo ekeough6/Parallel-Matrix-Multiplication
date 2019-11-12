@@ -32,16 +32,16 @@ int main(int argc,  char** argv) {
     printf("\n");
 
     float* mat1 = generate_matrix(size, size);
-    for(i = 0; i < size; ++i) {
+    /*for(i = 0; i < size; ++i) {
       for(j = 0; j < size; ++j) {
         printf("%6.3f ", mat1[i * size + j]);
       }
       printf("\n");
     }
-    printf("\n");
+    printf("\n");*/
 
 
-    float* resultant = bmr_mult(iden, size, size, iden, size, size);
+    float* resultant = bmr_mult(mat, size, size, iden, size, size);
     for(i = 0; i < size; ++i) {
       for(j = 0; j < size; ++j) {
         printf("%6.3f ", resultant[i * size + j]);

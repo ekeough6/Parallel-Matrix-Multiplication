@@ -27,17 +27,40 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
   get_dims(&p_cols_B, &p_rows_B, world_size);
 
   int first_rows = first_rows_len(rA, p_rows_A);
-  int first_cols = first_rows_len(cA, p_cols_B);
+  int first_cols = first_rows_len(cA, p_cols_A);
   int last_row = last_row_len(rA, p_rows_A);
   int last_col = last_row_len(cA, p_cols_A);
 
   float* subresultant = calloc(first_rows * first_rows, sizeof(float));
   //Creating new communicators for rows of matrices (A) and cols of matrices (B)
-  int row_A = world_rank / p_cols_A;
-  int col_B = world_rank / p_rows_B;
+  int row_A; // = world_rank / p_cols_A;
+  int col_B = world_rank % p_cols_B;
   MPI_Comm row_comm, col_comm;
-  MPI_Comm_split(MPI_COMM_WORLD, row_A, world_rank, &row_comm);
   MPI_Comm_split(MPI_COMM_WORLD, col_B, world_rank, &col_comm);
+
+  int i, j;
+  int* coord_to_proc = malloc(world_size * sizeof(int));
+  int rank = 0;
+  for(i = 0; i < world_size; ++i) {
+    if(i % p_cols_A < p_rows_A) {
+      coord_to_proc[i] = rank;
+      if(rank == world_rank) {
+        row_A = i / p_cols_A;
+        MPI_Comm_split(MPI_COMM_WORLD, row_A, i, &row_comm);
+      }
+      ++rank;
+    }
+  }
+  for(i = 0; i < world_size; ++i) {
+    if(i % p_cols_A >= p_rows_A) {
+      coord_to_proc[i] = rank;
+      if(rank == world_rank) {
+        row_A = i / p_cols_A;
+        MPI_Comm_split(MPI_COMM_WORLD, row_A, i, &row_comm);
+      }
+      ++rank;
+    }
+  }
 
   int row_size, row_rank;
 	MPI_Comm_size(row_comm, &row_size);
@@ -48,7 +71,7 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
 	MPI_Comm_rank(col_comm, &col_rank);
 
   if(world_rank == 0) {
-    int i, j;
+        
     //spliting up and distributing the A matrix
     for(i = 0; i < p_rows_A; ++i) {
       for(j = 0; j < p_cols_A; ++j) {
@@ -61,7 +84,8 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
         submat_A = malloc(rows * cols * sizeof(float));
         extract_matrix_bmr(mat_A, submat_A, i, j, rA, cA, p_rows_A, p_cols_A);
         //printf("%d\n", i * p_cols_A + j);
-        MPI_Send(submat_A, rows * cols, MPI_FLOAT, i * p_cols_A + j, 0, MPI_COMM_WORLD);
+        //MPI_Send(submat_A, rows * cols, MPI_FLOAT, i * p_cols_A + j, 0, MPI_COMM_WORLD);
+        MPI_Send(submat_A, rows * cols, MPI_FLOAT, coord_to_proc[i * p_cols_A + j], 0, MPI_COMM_WORLD);
         free(submat_A);
       }
     }
@@ -69,25 +93,21 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
       for(j = 0; j < p_cols_B; ++j) {
         if(i == 0 && j == 0)
           continue;
-        //int cols = (i == p_rows_B - 1) ? last_row : first_rows;
-        //int rows = (j == p_cols_B - 1) ? last_col : first_cols;
         int rows = first_rows;
         int cols = first_cols;
         submat_B = malloc(rows * cols * sizeof(float));
-        extract_matrix_bmr(mat_B, submat_B, i, j, rB, cB, p_cols_B, p_rows_B);
-        //printf("%d\n", i * p_cols_B + j);
-        MPI_Send(submat_A, rows * cols, MPI_FLOAT, i * p_cols_B + j, 0, MPI_COMM_WORLD);
+        extract_matrix_bmr(mat_B, submat_B, i, j, rB, cB, p_rows_B, p_cols_B);
+        MPI_Send(submat_B, rows * cols, MPI_FLOAT, i * p_cols_B + j, 0, MPI_COMM_WORLD);
         free(submat_B);
       }
     }
     submat_A = malloc(first_rows * first_cols * sizeof(float));
     submat_B = malloc(first_rows * first_cols * sizeof(float));
     extract_matrix_bmr(mat_A, submat_A, row_A, row_rank, rA, cA, p_rows_A, p_cols_A);
-    extract_matrix_bmr(mat_B, submat_B, col_rank, col_B, rA, cA, p_rows_A, p_cols_A);
+    extract_matrix_bmr(mat_B, submat_B, col_rank, col_B, rA, cA, p_rows_B, p_cols_B);
+    
   } else {
     //retrieve the matrices from the root node
-    //int rows = (row_A == p_rows_A - 1) ? last_row : first_rows;
-    //int cols = (row_rank == p_cols_A - 1) ? last_col : first_cols;
     int rows = first_rows;
     int cols = first_cols;
     submat_A = malloc(rows * cols * sizeof(float));
@@ -97,38 +117,45 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
     MPI_Recv(submat_B, rows * cols, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   }
 
-  int i, j;
+  //int i, j;
   for(i = 0; i < p_cols_A; ++i) {
     //bcast diagonal element
     int size = first_rows * first_cols;
     submat_diag = malloc(size * sizeof(float));
-    if((row_rank + i) % row_size == row_A) {
+    if((row_A + i) % row_size == row_rank) {
       for(j = 0; j < size; ++j) {
         submat_diag[j] = submat_A[j];
       }
     }
     MPI_Bcast(submat_diag, size, MPI_FLOAT, (i + row_A) % row_size, row_comm);
     if(row_rank < row_size - (p_cols_A - p_rows_A)) {
-      float* temp_res = matrix_mult(submat_A, first_rows, first_cols, submat_B, first_cols, first_rows);
+      float* temp_res = matrix_mult(submat_diag, first_rows, first_cols, submat_B, first_cols, first_rows);
       add_matrices(subresultant, temp_res, first_rows, first_rows);
+    
+    
       free(temp_res);
     }
     submat_B = roll_rows_base(submat_B, i, first_cols, first_rows, col_comm);
   }
-  
+   
   if(row_rank < row_size - (p_cols_A - p_rows_A)) {
     insert_matrix(resultant, subresultant, row_A * first_rows, row_rank * first_rows, rA, cB, first_rows, first_rows);
   }
+
   float* temp = calloc(rA * cB, sizeof(float));
+
   free(submat_B);
   free(submat_A);
   free(subresultant);
   free(submat_diag);
   MPI_Comm_free(&row_comm);
   MPI_Comm_free(&col_comm);
+
   MPI_Op resultant_combine;
   MPI_Op_create(&combineResults, 1, &resultant_combine);
   MPI_Reduce(resultant, temp, rA * cB, MPI_FLOAT, resultant_combine, 0, MPI_COMM_WORLD);
+  free(coord_to_proc);
+
   if(world_rank == 0) {
     int i;
     for(i = 0; i < rA * cB; ++i) {
@@ -137,7 +164,6 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
     free(temp);
     return resultant;
   }
-
   free(temp);
   return NULL;
 }
@@ -163,6 +189,6 @@ void extract_matrix_bmr(float* matrix, float* output, int p_row, int p_col, int 
   int row_offset = p_row * first_rows;
   int col_offset = p_col * first_cols;
   int extract_rows = (p_row == world_rows - 1) ? last_row : first_rows;
-  int extract_cols = (p_col == world_cols - 1) ? last_row : first_rows;
+  int extract_cols = (p_col == world_cols - 1) ? last_col : first_cols;
   extract_matrix(matrix, output, row_offset, col_offset, extract_rows, extract_cols, cols);
 }

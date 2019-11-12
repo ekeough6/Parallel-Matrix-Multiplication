@@ -122,7 +122,10 @@ void extract_matrix(float* matrix, float* output, int row_offset, int col_offset
   int i, j;
   for(i = 0; i < rows; ++i) {
     for(j = 0; j < cols; ++j) {
-      output[i * rows + j] = matrix[(row_offset + i) * total_cols + col_offset + j];
+      output[i * cols + j] = matrix[(row_offset + i) * total_cols + col_offset + j];
+      //printf("%6.3f ", output[i * cols + j]);
     }
+    //printf("\n");
   }
+  //printf("\n");
 }

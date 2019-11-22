@@ -1,6 +1,14 @@
 #ifndef MATRIX_H
 #define MATRIX_H
 
+#ifdef USE_GPU
+#define FREE cudaFree
+#else
+#define FREE free
+#endif
+
+void mmalloc(void** p, size_t size);
+
 //Multiplies two matrices given that cA == rB
 float* matrix_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB);
 
@@ -28,6 +36,8 @@ void get_col(float* mat, float* mat_col, int col_offset, int rows, int cols, int
 void insert_matrix(float* mat_A, float* mat_B, int row_offset, int col_offset, int rA, int cA, int rB, int cB); 
 
 void extract_matrix(float* matrix, float* output, int row_offset, int col_offset, int rows, int cols, int total_cols);
+
+void gpu_matrix_mult(float* a, float* b, float* c, int m, int n, int k);
 
 /*__global__
 void matrix_mult_GPU(float** mat_A, float** mat_B, float** mat_C, int a, int b, int c);

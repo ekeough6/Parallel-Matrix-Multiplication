@@ -1,5 +1,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
+#define BLOCK_SIZE 16
+
 __global__ void gpu_matrix_multiply(float* a,float* b,float* c, int m, int n, int k)
   { 
   int row = blockIdx.y * blockDim.y + threadIdx.y; 

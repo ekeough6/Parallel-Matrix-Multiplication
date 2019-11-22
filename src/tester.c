@@ -3,14 +3,16 @@
 #include "matrix.h"
 
 int main(int argc,  char** argv) {
-  float *mat_A = malloc(5 * sizeof(float) * 5);
+  float *mat_A;// = malloc(5 * sizeof(float) * 5);
+  mmalloc((void**)&mat_A, 5 * sizeof(float) * 5);
   for(int i = 0; i < 5; i++) {
     for(int j = 0; j < 5; j++) {
       mat_A[i * 5 + j] = (i == j) ? 1 : 0;
     }
   }
 
-  float *mat_B = malloc(5 * sizeof(float) * 5);
+  float *mat_B;// = malloc(5 * sizeof(float) * 5);
+  mmalloc((void**)&mat_B, 5 * sizeof(float) * 5);
   for(int i = 0; i < 5; i++) {
     for(int j = 0; j < 5; j++) {
       mat_B[i * 5 + j] = i * 5 + j;

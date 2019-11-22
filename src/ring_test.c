@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
+#include <time.h>
 #include "matrix.h"
 #include "ring.h"
 
@@ -10,9 +11,12 @@ int main(int argc,  char** argv) {
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
-  int size = 16;
+  int size = 24;
 
   if(world_rank == 0) {
+
+    time_t t;
+    srand((unsigned) time(&t));
     float* iden = malloc(size * size * sizeof(float));
 
     int i, j;
@@ -22,6 +26,7 @@ int main(int argc,  char** argv) {
       }
     }
 
+    printf("MAT \n");
     float* mat = generate_matrix(size, size);
     for(i = 0; i < size; ++i) {
       for(j = 0; j < size; ++j) {
@@ -31,6 +36,7 @@ int main(int argc,  char** argv) {
     }
     printf("\n");
 
+    printf("MAT 1\n");
     float* mat1 = generate_matrix(size, size);
     for(i = 0; i < size; ++i) {
       for(j = 0; j < size; ++j) {
@@ -40,8 +46,17 @@ int main(int argc,  char** argv) {
     }
     printf("\n");
 
+    float* resultant = matrix_mult(mat, size, size, mat1, size, size);
+    for(i = 0; i < size; ++i) {
+      for(j = 0; j < size; ++j) {
+        printf("%6.3f ", resultant[i * size + j]);
+      }
+      printf("\n");
+    }
+    printf("\n");
+    free(resultant);
 
-    float* resultant = ring_mult(mat, size, size, iden, size, size);
+    resultant = ring_mult(mat, size, size, mat1, size, size);
     for(i = 0; i < size; ++i) {
       for(j = 0; j < size; ++j) {
         printf("%6.3f ", resultant[i * size + j]);

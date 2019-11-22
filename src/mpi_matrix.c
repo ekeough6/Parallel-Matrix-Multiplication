@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <mpi.h>
+#include "matrix.h"
 #include "mpi_matrix.h"
 
 float* roll_rows_base(float* row, int turn, int rows, int cols, MPI_Comm communicator) {
@@ -13,7 +14,8 @@ float* roll_rows_base(float* row, int turn, int rows, int cols, MPI_Comm communi
   
   int size = rows * cols;
   
-  float* temp = malloc(size * sizeof(float));
+  float* temp;// = malloc(size * sizeof(float));
+  mmalloc((void**)&temp, size * sizeof(float));
   if(world_rank == 0) {
     //MPI_Recv(temp, size, MPI_FLOAT, world_size-1, 0, communicator, MPI_STATUS_IGNORE);
     //MPI_Send(row, size, MPI_FLOAT, 1, 0, communicator);
@@ -25,7 +27,7 @@ float* roll_rows_base(float* row, int turn, int rows, int cols, MPI_Comm communi
     //MPI_Send(row, size, MPI_FLOAT, (world_rank+1) % world_size, 0, communicator);
     //MPI_Recv(temp, size, MPI_FLOAT, world_rank-1, 0, communicator, MPI_STATUS_IGNORE);
   }
-  free(row);
+  FREE(row);
   return temp;
 }
 

@@ -68,17 +68,9 @@ float* ring_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
     rows = (world_rank + i != world_size - 1) ? first_rows: last_row;
     cols = (world_rank + i != world_size - 1) ? first_cols: last_col;
 
+    //gets the partial result for the current section of the result matrix
     float* mat_C = matrix_mult(row_mat_A, rows, cA, col_mat_B, cA, cols);
     insert_matrix(resultant, mat_C, first_rows * ((world_rank + i) % (world_size)) , first_cols * world_rank, rA, cB, rows, cols);
-    /*if(world_rank == 3) {
-      for(j = 0; j < rA; ++j) {
-        for(k = 0; k < cB; ++k) {
-          printf("%6.3f ", resultant[j * rA + k]);
-        }
-        printf("\n");
-      }
-      printf("\n");
-    }*/
     free(mat_C);
 
     row_mat_A = roll_rows(row_mat_A, i, rA, cA);
@@ -102,10 +94,6 @@ float* ring_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
 void ring_mult_helper(int rA, int cA, int rB, int cB) {
   ring_mult(NULL, rA, cA, NULL, rB, cB);
 }
-
-/*int last_row_len(int n, int world_size) {
-  return (n % world_size == 0) ? n / world_size : n % world_size;
-}*/
 
 float* roll_rows(float* row, int turn, int rA, int cA) {
 	int world_size, world_rank;

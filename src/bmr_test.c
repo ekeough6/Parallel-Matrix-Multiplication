@@ -13,8 +13,8 @@ int main(int argc,  char** argv) {
   int size = 6 * 4;
 
   if(world_rank == 0) {
-    float* iden;// = malloc(size * size * sizeof(float));
-    mmalloc((void**) &iden, size * size * sizeof(float));
+    float* iden = malloc(size * size * sizeof(float));
+    //mmalloc((void**) &iden, size * size * sizeof(float));
 
     int i, j;
     for(i = 0; i < size; ++i) {
@@ -50,9 +50,9 @@ int main(int argc,  char** argv) {
       printf("\n");
     }
     printf("\n");
-    FREE(iden);
-    FREE(mat);
-    FREE(resultant);
+    free(iden);
+    free(mat);
+    free(resultant);
   } else {
     bmr_mult_helper(size, size, size, size);
   }

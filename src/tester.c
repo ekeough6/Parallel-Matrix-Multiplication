@@ -20,7 +20,7 @@ int main(int argc,  char** argv) {
   }
 
   printf("Identity mult\n");
-  float* resultant = matrix_mult(mat_A, 5, 5, mat_B, 5, 5);
+  float* resultant = matrix_mult(mat_B, 5, 5, mat_A, 5, 5);
   if (NULL != resultant) {
     for(int i = 0; i < 5; i++) {
       for(int j = 0; j < 5; j++) {

@@ -16,8 +16,11 @@ float* matrix_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
     return NULL;
   }
   int i, j, k;
-  float *resultant; // = malloc(rA * cB * sizeof(float));
+  float *resultant;// = malloc(rA * cB * sizeof(float));
   mmalloc((void **)&resultant, rA * cB * sizeof(float));
+  for(i = 0; i < rA * cB; ++i) {
+    resultant[i] = 0;
+  }
 #ifdef USE_GPU
   gpu_matrix_mult(mat_A, mat_B, resultant, rA, cA, cB);
   return resultant;
@@ -64,7 +67,7 @@ float* generate_matrix(int rows, int cols) {
   int i, j;
   time_t t;
   srand((unsigned) time(&t));
-  float* matrix;// = malloc(rows * cols * sizeof(float));
+  float* matrix; //= malloc(rows * cols * sizeof(float));
   mmalloc((void **)&matrix, rows * cols * sizeof(float));
   for(i = 0; i < rows; ++i) {
     for(j = 0; j < cols; ++j) {

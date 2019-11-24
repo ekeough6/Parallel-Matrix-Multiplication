@@ -13,7 +13,7 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
 
-  float* resultant = calloc(rA * cB, sizeof(float));
+  float* resultant;// = calloc(rA * cB, sizeof(float));
   float* submat_A;
   float* submat_B;
   float* submat_diag;
@@ -31,7 +31,7 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
   int last_row = last_row_len(rA, p_rows_A);
   int last_col = last_row_len(cA, p_cols_A);
 
-  float* subresultant = calloc(first_rows * first_rows, sizeof(float));
+  float* subresultant;// = calloc(first_rows * first_rows, sizeof(float));
   //Creating new communicators for rows of matrices (A) and cols of matrices (B)
   int row_A; // = world_rank / p_cols_A;
   int col_B = world_rank % p_cols_B;
@@ -39,6 +39,16 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
   MPI_Comm_split(MPI_COMM_WORLD, col_B, world_rank, &col_comm);
 
   int i, j;
+
+  mmalloc((void**)&resultant, rA*cB*sizeof(float));
+  for(i = 0; i < rA * cB; ++i) {
+    resultant[i] = 0;
+  }
+  mmalloc((void**)&subresultant, first_rows*first_rows*sizeof(float));
+  for(i = 0; i < first_rows * first_cols; ++i) {
+    subresultant[i] = 0;
+  }
+
   int* coord_to_proc = malloc(world_size * sizeof(int));
   int rank = 0;
   for(i = 0; i < world_size; ++i) {
@@ -81,12 +91,13 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
         //int cols = (j == p_cols_A - 1) ? last_col : first_cols;
         int rows = first_rows;
         int cols = first_cols;
-        submat_A = malloc(rows * cols * sizeof(float));
+        //submat_A = malloc(rows * cols * sizeof(float));
+        mmalloc((void**)&submat_A, rows * cols * sizeof(float));
         extract_matrix_bmr(mat_A, submat_A, i, j, rA, cA, p_rows_A, p_cols_A);
         //printf("%d\n", i * p_cols_A + j);
         //MPI_Send(submat_A, rows * cols, MPI_FLOAT, i * p_cols_A + j, 0, MPI_COMM_WORLD);
         MPI_Send(submat_A, rows * cols, MPI_FLOAT, coord_to_proc[i * p_cols_A + j], 0, MPI_COMM_WORLD);
-        free(submat_A);
+        FREE(submat_A);
       }
     }
     for(i = 0; i < p_rows_B; ++i) {
@@ -95,14 +106,17 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
           continue;
         int rows = first_rows;
         int cols = first_cols;
-        submat_B = malloc(rows * cols * sizeof(float));
+        //submat_B = malloc(rows * cols * sizeof(float));
+        mmalloc((void**)&submat_B, rows * cols * sizeof(float));
         extract_matrix_bmr(mat_B, submat_B, i, j, rB, cB, p_rows_B, p_cols_B);
         MPI_Send(submat_B, rows * cols, MPI_FLOAT, i * p_cols_B + j, 0, MPI_COMM_WORLD);
-        free(submat_B);
+        FREE(submat_B);
       }
     }
-    submat_A = malloc(first_rows * first_cols * sizeof(float));
-    submat_B = malloc(first_rows * first_cols * sizeof(float));
+    //submat_A = malloc(first_rows * first_cols * sizeof(float));
+    //submat_B = malloc(first_rows * first_cols * sizeof(float));
+    mmalloc((void**)&submat_A, first_rows * first_cols * sizeof(float));
+    mmalloc((void**)&submat_B, first_rows * first_cols * sizeof(float));
     extract_matrix_bmr(mat_A, submat_A, row_A, row_rank, rA, cA, p_rows_A, p_cols_A);
     extract_matrix_bmr(mat_B, submat_B, col_rank, col_B, rA, cA, p_rows_B, p_cols_B);
     
@@ -110,18 +124,21 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
     //retrieve the matrices from the root node
     int rows = first_rows;
     int cols = first_cols;
-    submat_A = malloc(rows * cols * sizeof(float));
-    submat_B = malloc(rows * cols * sizeof(float));
+    //submat_A = malloc(rows * cols * sizeof(float));
+    //submat_B = malloc(rows * cols * sizeof(float));
+    mmalloc((void**)&submat_A, rows * cols * sizeof(float));
+    mmalloc((void**)&submat_B, rows * cols * sizeof(float));
     MPI_Recv(submat_A, rows * cols, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     //printf("idk\n");
     MPI_Recv(submat_B, rows * cols, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   }
 
   //int i, j;
+  int size = first_rows * first_cols;
+  //submat_diag = malloc(size * sizeof(float));
+  mmalloc((void**)&submat_diag, size * sizeof(float));
   for(i = 0; i < p_cols_A; ++i) {
     //bcast diagonal element
-    int size = first_rows * first_cols;
-    submat_diag = malloc(size * sizeof(float));
     if((row_A + i) % row_size == row_rank) {
       for(j = 0; j < size; ++j) {
         submat_diag[j] = submat_A[j];
@@ -131,9 +148,7 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
     if(row_rank < row_size - (p_cols_A - p_rows_A)) {
       float* temp_res = matrix_mult(submat_diag, first_rows, first_cols, submat_B, first_cols, first_rows);
       add_matrices(subresultant, temp_res, first_rows, first_rows);
-    
-    
-      free(temp_res);
+      FREE(temp_res);
     }
     submat_B = roll_rows_base(submat_B, i, first_cols, first_rows, col_comm);
   }
@@ -142,12 +157,16 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
     insert_matrix(resultant, subresultant, row_A * first_rows, row_rank * first_rows, rA, cB, first_rows, first_rows);
   }
 
-  float* temp = calloc(rA * cB, sizeof(float));
+  float* temp;// = calloc(rA * cB, sizeof(float));
+  mmalloc((void**)&temp, rA * cB* sizeof(float));
+  for(i = 0; i < rA * cB; ++i) {
+    temp[i] = 0;
+  }
 
-  free(submat_B);
-  free(submat_A);
-  free(subresultant);
-  free(submat_diag);
+  FREE(submat_B);
+  FREE(submat_A);
+  FREE(subresultant);
+  FREE(submat_diag);
   MPI_Comm_free(&row_comm);
   MPI_Comm_free(&col_comm);
 
@@ -161,10 +180,10 @@ float* bmr_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
     for(i = 0; i < rA * cB; ++i) {
       resultant[i] = temp[i];
     }
-    free(temp);
+    FREE(temp);
     return resultant;
   }
-  free(temp);
+  FREE(temp);
   return NULL;
 }
 

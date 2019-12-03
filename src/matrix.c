@@ -65,8 +65,6 @@ float dot_prod_col(float* row_A, float* mat_B, int rows, int col, int n) {
 
 float* generate_matrix(int rows, int cols) {
   int i, j;
-  time_t t;
-  srand((unsigned) time(&t));
   float* matrix; //= malloc(rows * cols * sizeof(float));
   mmalloc((void **)&matrix, rows * cols * sizeof(float));
   for(i = 0; i < rows; ++i) {
@@ -83,7 +81,7 @@ void save_matrix(float* mat, int rows, int cols, char* filename) {
   fprintf(file, "%d %d\n", rows, cols);
   for(i = 0; i < rows; ++i) {
     for(j = 0; j < cols; ++j) {
-      fprintf(file, "%f ", mat[i * cols + j]);
+      fprintf(file, "%6.3f ", mat[i * cols + j]);
     }
     fprintf(file, "\n");
   }
@@ -94,7 +92,8 @@ float* load_matrix(char* filename, int* rows, int* cols) {
   int i, j;
   FILE* file = fopen(filename, "r");
   fscanf(file, "%d %d\n", rows, cols);
-  float* mat = malloc(*rows * *cols * sizeof(float));
+  float* mat;// = malloc(*rows * *cols * sizeof(float));
+  mmalloc((void**)&mat, *rows * *cols * sizeof(float));
   for(i = 0; i < *rows; ++i) {
     for(j = 0; j < *cols; ++j) {
       fscanf(file, "%f ", mat + i * *cols + j);

@@ -7,11 +7,12 @@
 
 float* ring_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
   //initializing the MPI variables
-	int world_size, world_rank;
-	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  int world_size, world_rank;
+  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
-  float* resultant = calloc(rA * cB, sizeof(float));
+  float* resultant;// = calloc(rA * cB, sizeof(float));
+  mmalloc((void**)&resultant, rA * cB * sizeof(float));
 
   int last_row = last_row_len(rA, world_size);
   int first_rows = first_rows_len(rA, world_size);
@@ -25,6 +26,10 @@ float* ring_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
 
   float* row_mat_A;
   float* col_mat_B;
+  int i, j, k, rows, cols;
+  for(i = 0; i < rA * cB; ++i) {
+    resultant[i] = 0;
+  }
   
   if(world_rank == 0) {
     //sending out the data to the other processors
@@ -34,8 +39,8 @@ float* ring_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
       cols = (i != world_size - 1) ? first_cols: last_col;
       row_size = (i != world_size - 1) ? first_row_size : last_row_size;
       col_size = (i != world_size - 1) ? first_col_size : last_col_size;
-      row_mat_A = malloc(row_size);
-      col_mat_B = malloc(col_size);
+      mmalloc((void**)&row_mat_A, row_size);
+      mmalloc((void**)&col_mat_B, col_size);
 
       //spliting up the rows and cols between the processors
       get_row(mat_A, row_mat_A, first_rows * i, rows, cA);
@@ -43,11 +48,11 @@ float* ring_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
 
       MPI_Send(row_mat_A, rows * cA, MPI_FLOAT, i, 0, MPI_COMM_WORLD);
       MPI_Send(col_mat_B, cols * rB, MPI_FLOAT, i, 0, MPI_COMM_WORLD);
-      free(row_mat_A);
-      free(col_mat_B);
+      FREE(row_mat_A);
+      FREE(col_mat_B);
     }
-    row_mat_A = malloc(first_row_size);
-    col_mat_B = malloc(first_col_size);
+    mmalloc((void**)&row_mat_A, first_row_size);
+    mmalloc((void**)&col_mat_B, first_row_size);
     get_row(mat_A, row_mat_A, 0, first_rows, cA);
     get_col(mat_B, col_mat_B, 0, rB, first_cols, cB); 
   } else {
@@ -56,38 +61,40 @@ float* ring_mult(float* mat_A, int rA, int cA, float* mat_B, int rB, int cB) {
     int col_size = (world_rank != world_size - 1) ? first_col_size : last_col_size;
     int rows = (world_rank != world_size - 1) ? first_rows: last_row;
     int cols = (world_rank != world_size - 1) ? first_cols: last_col;
-    row_mat_A = malloc(row_size);
-    col_mat_B = malloc(col_size);
+
+    mmalloc((void**)&row_mat_A, row_size);
+    mmalloc((void**)&col_mat_B, col_size);
     MPI_Recv(row_mat_A, rows * cA, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     MPI_Recv(col_mat_B, cols * rB, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   }
   //at this point both of the matrices should be properly partitioned across the processors
-  int i, j, k, rows, cols;
   for(i = 0; i < world_size; ++i) {
-    int r, c;
     rows = (world_rank + i != world_size - 1) ? first_rows: last_row;
     cols = (world_rank + i != world_size - 1) ? first_cols: last_col;
 
     //gets the partial result for the current section of the result matrix
     float* mat_C = matrix_mult(row_mat_A, rows, cA, col_mat_B, cA, cols);
     insert_matrix(resultant, mat_C, first_rows * ((world_rank + i) % (world_size)) , first_cols * world_rank, rA, cB, rows, cols);
-    free(mat_C);
+    FREE(mat_C);
 
     row_mat_A = roll_rows(row_mat_A, i, rA, cA);
   }
   MPI_Op resultant_combine;
   MPI_Op_create(&combineResults, 1, &resultant_combine);
-  float* temp = calloc(rA * cB, sizeof(float));
+  float* temp;// = calloc(rA * cB, sizeof(float));
+  mmalloc((void**)&temp, rA * cB * sizeof(float));
+  for(i = 0; i < rA * cB; ++i) {
+    temp[i] = 0;
+  }
   MPI_Reduce(resultant, temp, rA * cB, MPI_FLOAT, resultant_combine, 0, MPI_COMM_WORLD);
   if(world_rank == 0) {
-    int i;
     for(i = 0; i < rA * cB; ++i) {
       resultant[i] = temp[i];
     }
-    free(temp);
+    FREE(temp);
     return resultant;
   }
-  free(temp);
+  FREE(temp);
   return NULL;
 }
 
@@ -108,7 +115,8 @@ float* roll_rows(float* row, int turn, int rA, int cA) {
 
   int rec_size = (world_rank + turn + 1 != world_size - 1) ? first_rows * cA: last_row * cA;
   int send_size = (world_rank + turn + 1 == world_size - 1) ? first_rows * cA: last_row * cA;
-  float* temp = malloc(rec_size * sizeof(float));
+  float* temp;// = malloc(rec_size * sizeof(float));
+  mmalloc((void**)&temp, rec_size * sizeof(float));
   if(world_rank == 0) {
     MPI_Recv(temp, rec_size, MPI_FLOAT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     MPI_Send(row, send_size, MPI_FLOAT, world_size-1, 0, MPI_COMM_WORLD);
@@ -116,6 +124,6 @@ float* roll_rows(float* row, int turn, int rA, int cA) {
     MPI_Send(row, send_size, MPI_FLOAT, world_rank-1, 0, MPI_COMM_WORLD);
     MPI_Recv(temp, rec_size, MPI_FLOAT, (world_rank+1) % world_size, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   }
-  free(row);
+  FREE(row);
   return temp;
 }

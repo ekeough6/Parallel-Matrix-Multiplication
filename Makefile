@@ -7,9 +7,11 @@ NVCFLAGS2=-dlink
 CUDAFLAG=-lcudart
 TESTSOURCES=src/tester.c src/matrix.c
 GENSOURCES=src/matrix_gen.c src/matrix.c
+SGENSOURCES=src/matrix_gen_strassen.c src/matrix.c
 COMPSOURCES=src/matrix_compare.c src/matrix.c
 RINGSOURCES=src/ring_test.c src/ring.c src/matrix.c src/mpi_matrix.c
 BMRSOURCES=src/bmr.c src/matrix.c src/mpi_matrix.c src/bmr_test.c
+STRASSENSOURCES=src/strassens.c src/matrix.c src/mpi_matrix.c src/strassens_test.c
 CUDASOURCES=src/gpu_matrix.cu
 TESTOBJECTS=$(TESTSOURCES:.c=.o)
 GENOBJECTS=$(GENSOURCES:.c=.o)
@@ -20,9 +22,11 @@ CUDAOBJECTS=$(CUDASOURCES:.cu=.o)
 CUDAMATRIX=cuda_matrix.o
 TESTEXEC=test
 GENEXEC=mat_gen
+SGENEXEC=mat_gen_strassen
 COMPEXEC=mat_comp
 RINGEXEC=ring
 BMREXEC=bmr
+STRASSENEXEC=strassens
 EXECS=$(TESTEXEC) $(RINGEXEC) $(BMREXEC) $(GENEXEC) $(COMPEXEC)
 
 $(TESTEXEC): $(TESTSOURCES)
@@ -30,6 +34,9 @@ $(TESTEXEC): $(TESTSOURCES)
 
 $(GENEXEC): $(GENSOURCES)
 	$(CC) $(CFLAGS) $(GENSOURCES) -o $@
+
+$(SGENEXEC): $(SGENSOURCES)
+	$(CC) $(CFLAGS) $(SGENSOURCES) -o $@
 
 $(COMPEXEC): $(COMPSOURCES)
 	$(CC) $(CFLAGS) $(COMPSOURCES) -o $@
@@ -39,6 +46,9 @@ $(RINGEXEC): $(RINGSOURCES)
 
 $(BMREXEC): $(BMRSOURCES)
 	$(MPICC) $(CFLAGS) $(BMRSOURCES) -o $@ -lm
+
+$(STRASSENEXEC): $(STRASSENSOURCES)
+	$(MPICC) $(CFLAGS) $(STRASSENSOURCES) -o $@ -lm
 
 $(TESTEXEC)-gpu: $(TESTSOURCES)
 	$(NVCC) $(NVCFLAGS) $(CUDASOURCES) -o $(CUDAOBJECTS)

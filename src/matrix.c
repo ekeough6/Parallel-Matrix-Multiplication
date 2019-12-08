@@ -45,6 +45,24 @@ void add_matrices(float* mat_A, float* mat_B, int row, int col) {
   }
 }
 
+void matrix_sum(float* resultant, float* mat_A, float* mat_B, int row, int col) {
+  int i,j;
+  for(i = 0; i < row; ++i) {
+    for(j = 0; j < col; ++j) {
+      resultant[i * col + j] = mat_A[i * col + j] + mat_B[i * col + j];
+    }
+  }
+}
+
+void matrix_diff(float* resultant, float* mat_A, float* mat_B, int row, int col) {
+  int i,j;
+  for(i = 0; i < row; ++i) {
+    for(j = 0; j < col; ++j) {
+      resultant[i * col + j] = mat_A[i * col + j] - mat_B[i * col + j];
+    }
+  }
+}
+
 float dot_prod(float* vec_A, float* vec_B, int n) {
   float sum = 0;
   int i;

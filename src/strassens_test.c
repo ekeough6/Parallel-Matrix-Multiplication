@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <mpi.h>
 #include "matrix.h"
-#include "bmr.h"
+#include "strassens.h"
 
 int main(int argc,  char** argv) {
   MPI_Init(NULL, NULL);
@@ -10,20 +10,20 @@ int main(int argc,  char** argv) {
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
-  int sizes[3] = {(1<<4) * 24, (1<<6) * 24, (1<<8) * 24};
-  char* input[3] = {"input0.txt", "input1.txt", "input2.txt"};
-  char* input2[3] = {"input00.txt", "input11.txt", "input22.txt"};
-  char* output[3] = {"bmr_output0.txt", "bmr_output1.txt", "bmr_output2.txt"};
+  int sizes[3] = {(1<<8), (1<<10), (1<<12)};
+  char* input[3] = {"sinput0.txt", "sinput1.txt", "sinput2.txt"};
+  char* input2[3] = {"sinput00.txt", "sinput11.txt", "sinput22.txt"};
+  char* output[3] = {"strassens_output0.txt", "strassens_output1.txt", "strassens_output2.txt"};
   int i, j, k;
 
-  for(i = 0; i < 3; ++i) {
+  for(i = 0; i < 1; ++i) {
       if(world_rank == 0) {
         int r, c;
 
         float* mat = load_matrix(input[i], &r, &c);
         float* mat1 = load_matrix(input2[i], &r, &c);
         double time = MPI_Wtime();
-        float* resultant = bmr_mult(mat, sizes[i], sizes[i], mat1, sizes[i], sizes[i]);
+        float* resultant = strassen_mult(mat, mat1, sizes[i], sizes[i]);
 
         printf("2^%d*24: %f\n", i, MPI_Wtime() - time);
         save_matrix(resultant, sizes[i], sizes[i], output[i]);
@@ -32,7 +32,7 @@ int main(int argc,  char** argv) {
         FREE(resultant);
         FREE(mat1);
       } else {
-        bmr_mult_helper(sizes[i], sizes[i], sizes[i], sizes[i]);
+        strassen_mult_helper(sizes[i], sizes[i]);
       }
   }
   MPI_Finalize();

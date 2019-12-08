@@ -19,7 +19,6 @@ __global__ void gpu_matrix_multiply(float* a,float* b,float* c, int m, int n, in
 }
 
 extern "C" void gpu_matrix_mult(float* a, float* b, float* c, int m, int n, int k) {
-//void gpu_matrix_mult(float* a, float* b, float* c, int m, int n, int k) {
   float *d_a, *d_b, *d_c;
   cudaMalloc((void **) &d_a, sizeof(float)*m*n);
   cudaMalloc((void **) &d_b, sizeof(float)*n*k);

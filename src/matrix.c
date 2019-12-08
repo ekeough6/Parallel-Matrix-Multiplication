@@ -8,6 +8,8 @@ void mmalloc(void** p, size_t size) {
   cudaMallocHost(p, size);  
   #else
   (*p) = malloc(size);
+  if(p == 0)
+    printf("something is very wrong\n");
   #endif
 }
 

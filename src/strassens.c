@@ -35,10 +35,33 @@ float* strassen_mult(float* mat_A, float* mat_B, int rows, int cols) {
 
 
   float *resultant, **sub_As, **sub_Bs, *send_buf, *recv_buf;
+  void* msg_buffer;
   int *destinations = malloc(MMS * sizeof(int));
   int i, j;
   int recv_size;
   int leaf_count = 0;
+  int flag = 0;
+  int buf_length = 0, temp;
+
+  MPI_Pack_size(size_1 * size_1 * 2, MPI_FLOAT, MPI_COMM_WORLD, &temp);
+  buf_length += temp;
+  MPI_Pack_size(size_2 * size_2 * 2, MPI_FLOAT, MPI_COMM_WORLD, &temp);
+  buf_length += temp * 7;
+  MPI_Pack_size(size_3 * size_3 * 2, MPI_FLOAT, MPI_COMM_WORLD, &temp);
+  buf_length += temp * 49;
+  MPI_Pack_size(size_3 * size_3 * 2, MPI_FLOAT, MPI_COMM_WORLD, &temp);
+  buf_length += temp * 7 * 7 * 7;
+  MPI_Pack_size(size_4 * size_3 * 2, MPI_FLOAT, MPI_COMM_WORLD, &temp);
+  buf_length += temp * 7 * 7 * 7 * 7;
+  MPI_Pack_size(size_3 * size_3, MPI_FLOAT, upstream_comm, &temp);
+  buf_length += temp * 7 * 7 * 7;
+  MPI_Pack_size(size_2 * size_2, MPI_FLOAT, upstream_comm, &temp);
+  buf_length += temp * 7 * 7;
+  MPI_Pack_size(size_1 * size_1, MPI_FLOAT, upstream_comm, &temp);
+  buf_length += temp * 7;
+  MPI_Pack_size(1, MPI_FLOAT, MPI_COMM_WORLD, &temp);
+  buf_length += temp * LEAVES;
+  buf_length += LEAVES * 7 * MPI_BSEND_OVERHEAD;
 
   resultant = NULL;
 
@@ -46,7 +69,11 @@ float* strassen_mult(float* mat_A, float* mat_B, int rows, int cols) {
     destinations[i] = (base_rank + i) % world_size;
   }
 
-  if(world_rank = 0) {
+  mmalloc((void**)&msg_buffer, buf_length);
+  i = MPI_Buffer_attach(msg_buffer, buf_length);
+  printf("%d\n", i);
+
+  if(world_rank == 0) {
     mmalloc((void**)&sub_As, MMS * sizeof(float*));
     mmalloc((void**)&sub_Bs, MMS * sizeof(float*));
     for(i = 0; i < MMS; ++i) {
@@ -54,20 +81,41 @@ float* strassen_mult(float* mat_A, float* mat_B, int rows, int cols) {
       mmalloc((void**)&sub_Bs[i], size_1 * size_1 * sizeof(float));
     }
     mmalloc((void**)&resultant, rows * cols * sizeof(float));
+    printf("extracting initial set\n");
     strassen_extract(mat_A, mat_B, rows, cols, sub_As, sub_Bs);
     mmalloc((void**)&send_buf, size_1 * size_1 * 2);
+    printf("Sending initial set\n");
     for(i = 0; i < MMS; ++i) { 
       memcpy(send_buf, sub_As[i], size_1 * size_1 * sizeof(float));
       memcpy(send_buf + size_1 * size_1, sub_Bs[i], size_1 * size_1 * sizeof(float));
-      MPI_Isend(send_buf, size_1 * size_1 * 2, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &send_request);
+      printf("time to send\n");
+      MPI_Bsend(send_buf, size_1 * size_1 * 2, MPI_FLOAT, i, 0, MPI_COMM_WORLD);
+      //MPI_Ibsend(send_buf, size_1 * size_1 * 2, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &send_request);
+      //while(!flag)
+          //MPI_Test(&send_request, &flag, MPI_STATUS_IGNORE);
+      //flag = 0;
     }
-    FREE(send_buf);
+    printf("Sent initial set\n");
+    for(i = 0; i < MMS; ++i) {
+      FREE(sub_As[i]);
+      FREE(sub_Bs[i]);
+    }
+    FREE(sub_As);
+    FREE(sub_Bs);
+    //FREE(send_buf);
   }
+    if(world_rank == 0) {
+        printf("msg time\n");
+    }
 
   int cont = 1;
   while(cont) {
     float *buf_A, *buf_B;
     //keep spliting until at right level
+
+    if(world_rank == 0) {
+        printf("msg probing\n");
+    }
     MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
     /*if(status_length == status_size) {
       statuses = realloc(statuses, status_size * 2 * sizeof(MPI_Status));
@@ -79,6 +127,9 @@ float* strassen_mult(float* mat_A, float* mat_B, int rows, int cols) {
     mmalloc((void**)&recv_buf, recv_size * sizeof(float));
 
     MPI_Recv(recv_buf, recv_size, MPI_FLOAT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+    if(world_rank == 0) {
+        printf("msg got, size: %d\n", recv_size);
+    }
 
     buf_A = recv_buf; //A is stored in the first half
     buf_B = recv_buf + (recv_size / 2); //B is stored in the second half
@@ -88,9 +139,13 @@ float* strassen_mult(float* mat_A, float* mat_B, int rows, int cols) {
       send_buf = matrix_mult(buf_A, size_1, size_1, buf_B, size_1, size_1);
       int tag = status.MPI_TAG >> 7;
       int target = status.MPI_SOURCE;
+      if(world_rank == 0)
+        printf("%d local mult, %d\n", world_rank, target);
       float msg = 1;
-      MPI_Isend(send_buf, size_4 * size_4, MPI_FLOAT, target, tag, upstream_comm, &send_request);
-      MPI_Isend(&msg, 1, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &send_request);
+      //MPI_Ibsend(send_buf, size_4 * size_4, MPI_FLOAT, target, tag, upstream_comm, &send_request);
+      MPI_Bsend(send_buf, size_4 * size_4, MPI_FLOAT, target, tag, MPI_COMM_WORLD);
+      //MPI_Ibsend(&msg, 1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &send_request);
+      MPI_Bsend(&msg, 1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
       FREE(send_buf);
     } else if(recv_size > 1) {
       //divide up the A and B matrices and ISend out
@@ -99,24 +154,34 @@ float* strassen_mult(float* mat_A, float* mat_B, int rows, int cols) {
       mmalloc((void**)&sub_Bs, MMS * sizeof(float*));
       int size = 0;
       for(i = 0; i < 5; ++i) {
-        if(recv_size == sizes[i] * sizes[i]) size = sizes[i];
+        if(recv_size == sizes[i] * sizes[i] * 2) size = sizes[i];
       }
       for(i = 0; i < MMS; ++i) {
-        mmalloc((void**)&sub_As[i], size * size * sizeof(float));
-        mmalloc((void**)&sub_Bs[i], size * size * sizeof(float));
+        mmalloc((void**)&sub_As[i], size * size / 4 * sizeof(float));
+        mmalloc((void**)&sub_Bs[i], size * size / 4 * sizeof(float));
       }
-      strassen_extract(buf_A, buf_B, recv_size, recv_size, sub_As, sub_Bs);
+      strassen_extract(buf_A, buf_B, size, size, sub_As, sub_Bs);
       mmalloc((void**)&send_buf, size * size / 2);
       //figure out how to best distribute the matrices to minimize overlap
       //tag = curr_tag<<7 + world_rank + 1
-      int tag = status.MPI_TAG << 7 + world_rank + 1;
-      for(i = 0; i < 7; ++i) {
-        memcpy(send_buf, sub_As[i], size * size / 2 * sizeof(float));
-        memcpy(send_buf + size * size / 2, sub_Bs[i], size * size / 2 * sizeof(float));
-        //Sends out the a nd b matrices along with an encoding of the path and the number of the M matrix
-        MPI_Isend(send_buf, size * size / 2, MPI_FLOAT, destinations[i], tag, MPI_COMM_WORLD, &send_request);
+      int tag = (status.MPI_TAG << 7) | (world_rank + 1);
+      for(i = 0; i < MMS; ++i) {
+        memcpy(send_buf, sub_As[i], size * size / 4 * sizeof(float));
+        memcpy(send_buf + size * size / 4, sub_Bs[i], size * size / 4 * sizeof(float));
+        //Sends out the a and b matrices along with an encoding of the path and the number of the M matrix
+
+        if(world_rank == 0) {
+            printf("sending out the goods: %d to %d\n", size * size / 2, destinations[i]);
+        }
+        //MPI_Ibsend(send_buf, size * size / 2, MPI_FLOAT, destinations[i], tag, MPI_COMM_WORLD, &send_request);
+        MPI_Bsend(send_buf, size * size / 2, MPI_FLOAT, destinations[i], tag, MPI_COMM_WORLD);
+        /*while(!flag)
+          MPI_Test(&send_request, &flag, MPI_STATUS_IGNORE);
+        flag = 0;*/
       }
 
+      printf("goods sent\n");
+      FREE(send_buf);
       for(i = 0; i < MMS; ++i) {
         FREE(sub_As[i]);
         FREE(sub_Bs[i]);
@@ -130,7 +195,8 @@ float* strassen_mult(float* mat_A, float* mat_B, int rows, int cols) {
         if(leaf_count >= LEAVES) {
           float msg = 1;
           for(i = 1; i < world_size; ++i) {
-            MPI_Isend(&msg, 1, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &send_request);
+            //MPI_Ibsend(&msg, 1, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &send_request);
+            MPI_Bsend(&msg, 1, MPI_FLOAT, i, 0, MPI_COMM_WORLD);
           }
           cont = 0;
         }
@@ -142,6 +208,8 @@ float* strassen_mult(float* mat_A, float* mat_B, int rows, int cols) {
   }
 
   cont = 1;
+  if(world_rank == 0)
+      printf("upstream time\n");
 
   while(cont) {
     //upstream loop
@@ -172,15 +240,20 @@ float* strassen_mult(float* mat_A, float* mat_B, int rows, int cols) {
     }
 
     MPI_Recv(recv_buf, recv_size, MPI_FLOAT, MPI_ANY_SOURCE, MPI_ANY_TAG, upstream_comm, &status);
+    if(world_rank == 0)
+      printf("upstream msg, %d\n", recv_size);
     if(recv_size > 1) {
       memcpy(buf_Ms[dest_offset], recv_buf, recv_size * sizeof(float));
       for(i = 1; i < 7; ++i) {
         //look for the six messages corresponding to the six other matrices that should be coming in with the given tag
-        MPI_Recv(buf_Ms[(dest_offset + i)%world_size], recv_size, MPI_FLOAT, destinations[(dest_offset + i)%world_size], curr_tag, upstream_comm, MPI_STATUS_IGNORE);
+        MPI_Recv(buf_Ms[(dest_offset + i)%MMS], recv_size, MPI_FLOAT, destinations[(dest_offset + i)%MMS], curr_tag, upstream_comm, MPI_STATUS_IGNORE);
       }
 
       //combine the M matrices into a sub result and send back up
-      int target = (curr_tag & 0x7F) - 1;
+      int target = (curr_tag == 0) ? 0 : (curr_tag & 0x7F ) - 1;
+      if(world_rank == 0)
+        printf("upstream msg more parts, %x\n", curr_tag);
+      //target = (target < 0) ? 0 : target;
       curr_tag = curr_tag >> 7;
       mmalloc((void**)&subresultant, recv_size * 4 * sizeof(float));
       mmalloc((void**)&quads, 4 * sizeof(float*));
@@ -220,10 +293,12 @@ float* strassen_mult(float* mat_A, float* mat_B, int rows, int cols) {
         cont = 0;
         float msg = 1;
         for(i = 1; i < world_size; ++i) {
-          MPI_Isend(&msg, 1, MPI_FLOAT, i, 0, upstream_comm, &send_request);
+          //MPI_Ibsend(&msg, 1, MPI_FLOAT, i, 0, upstream_comm, &send_request);
+          MPI_Bsend(&msg, 1, MPI_FLOAT, i, 0, upstream_comm);
         }
       } else {
-        MPI_Isend(subresultant, size * size * 4, MPI_FLOAT, target, curr_tag, upstream_comm, &send_request);
+        //MPI_Ibsend(subresultant, size * size * 4, MPI_FLOAT, target, curr_tag, upstream_comm, &send_request);
+        MPI_Bsend(subresultant, size * size * 4, MPI_FLOAT, target, curr_tag, upstream_comm);
       }
 
       for(i = 0; i < 4; ++i) {
@@ -256,8 +331,8 @@ void strassen_extract(float *mat_A, float *mat_B, int rows, int cols, float** su
   mmalloc((void**)&b_quad, 4 * sizeof(float*));
   int i, j;
   for(i = 0; i < 4; ++i) {
-    mmalloc((void**)&a_quad[i], rows/4 * cols/4 * sizeof(float));
-    mmalloc((void**)&b_quad[i], rows/4 * cols/4 * sizeof(float));
+    mmalloc((void**)&a_quad[i], rows/2 * cols/2 * sizeof(float));
+    mmalloc((void**)&b_quad[i], rows/2 * cols/2 * sizeof(float));
   }
   for(i = 0; i < 2; ++i) {
     for(j = 0; j < 2; ++j) {
@@ -267,17 +342,17 @@ void strassen_extract(float *mat_A, float *mat_B, int rows, int cols, float** su
   }
   matrix_sum(sub_As[0], a_quad[0], a_quad[3], rows/2, cols/2);
   matrix_sum(sub_As[1], a_quad[2], a_quad[3], rows/2, cols/2);
-  memcpy(sub_As[2], a_quad[1], rows * cols * sizeof(float));
-  memcpy(sub_As[3], a_quad[3], rows * cols * sizeof(float));
+  memcpy(sub_As[2], a_quad[1], rows * cols / 4 * sizeof(float));
+  memcpy(sub_As[3], a_quad[3], rows * cols / 4 * sizeof(float));
   matrix_sum(sub_As[4], a_quad[0], a_quad[1], rows/2, cols/2);
   matrix_diff(sub_As[5], a_quad[2], a_quad[0], rows/2, cols/2);
   matrix_diff(sub_As[6], a_quad[1], a_quad[3], rows/2, cols/2);
    
   matrix_sum(sub_Bs[0], b_quad[0], b_quad[3], rows/2, cols/2);
-  memcpy(sub_Bs[1], b_quad[0], rows * cols * sizeof(float));
+  memcpy(sub_Bs[1], b_quad[0], rows * cols / 4 * sizeof(float));
   matrix_diff(sub_Bs[2], b_quad[1], b_quad[3], rows/2, cols/2);
   matrix_diff(sub_Bs[3], b_quad[2], b_quad[0], rows/2, cols/2);
-  memcpy(sub_Bs[4], b_quad[3], rows * cols * sizeof(float));
+  memcpy(sub_Bs[4], b_quad[3], rows * cols / 4 * sizeof(float));
   matrix_sum(sub_Bs[5], b_quad[0], b_quad[1], rows/2, cols/2);
   matrix_sum(sub_Bs[6], b_quad[2], b_quad[3], rows/2, cols/2);
   for(i = 0; i < 4; ++i) {

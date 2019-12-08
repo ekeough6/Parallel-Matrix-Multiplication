@@ -27,7 +27,7 @@ COMPEXEC=mat_comp
 RINGEXEC=ring
 BMREXEC=bmr
 STRASSENEXEC=strassens
-EXECS=$(TESTEXEC) $(RINGEXEC) $(BMREXEC) $(GENEXEC) $(COMPEXEC)
+EXECS=$(TESTEXEC) $(RINGEXEC) $(BMREXEC) $(GENEXEC) $(COMPEXEC) $(STRASSENEXEC)
 
 $(TESTEXEC): $(TESTSOURCES)
 	$(CC) $(CFLAGS) $(TESTSOURCES) -o $@
@@ -48,7 +48,7 @@ $(BMREXEC): $(BMRSOURCES)
 	$(MPICC) $(CFLAGS) $(BMRSOURCES) -o $@ -lm
 
 $(STRASSENEXEC): $(STRASSENSOURCES)
-	$(MPICC) $(CFLAGS) $(STRASSENSOURCES) -o $@ -lm
+	$(MPICC) $(CFLAGS) $(STRASSENSOURCES) -o $@ -lm -g
 
 $(TESTEXEC)-gpu: $(TESTSOURCES)
 	$(NVCC) $(NVCFLAGS) $(CUDASOURCES) -o $(CUDAOBJECTS)
@@ -82,8 +82,18 @@ $(BMREXEC)-gpu: $(BMRSOURCES)
 	$(MPICC) $(CUDAOBJECTS) mpi_matrix.o matrix.o bmr.o bmr_test.o $(CUDAFLAG) -lm -o $@ 
 	rm *.o
 
+$(STRASSENEXEC)-gpu: $(STRASSENSOURCES)
+	$(NVCC) $(NVCFLAGS) $(CUDASOURCES) -o $(CUDAOBJECTS)
+	$(CC) $(CFLAGS) -D USE_GPU -c src/matrix.c -o matrix.o
+	$(MPICC) $(CFLAGS) -D USE_GPU -c src/strassens.c -o strassens.o
+	$(MPICC) $(CFLAGS) -D USE_GPU -c src/strassens_test.c -o strassens_test.o
+	$(MPICC) $(CFLAGS) -D USE_GPU -c src/mpi_matrix.c -o mpi_matrix.o
+	$(MPICC) $(CUDAOBJECTS) mpi_matrix.o matrix.o strassens.o strassens_test.o $(CUDAFLAG) -lm -o $@ 
+	rm *.o
+
+
 clean:
-	rm $(EXECS) test-gpu ring-gpu bmr-gpu mat_gen-gpu
+	rm $(EXECS) test-gpu ring-gpu bmr-gpu mat_gen-gpu 
 
 all:
 

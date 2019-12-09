@@ -36,7 +36,6 @@ float* strassen_mult(float* mat_A, float* mat_B, int size, int root, int iter) {
   int world_size, world_rank;
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-  printf("%d, %d iter %d\n", world_rank, root, iter);
 
   const int size_1 = size / 2; //at this level tag is always 0
   const int size_2 = size_1 / 2; //at this level tag is world_rank_1+1
@@ -44,137 +43,124 @@ float* strassen_mult(float* mat_A, float* mat_B, int size, int root, int iter) {
   const int size_4 = size_3 / 2; //at this level tag is world_rank_1+1<<14 + world_rank_2+1<<7 + world_rank_3+1
   const int sizes[] = {size, size_1, size_2, size_3, size_4};
   //const int base_rank = world_rank * 7 % world_size;
-  if(iter == 4) {
-    return matrix_mult(mat_A, size_4, size_4, mat_B, size_4, size_4);
-  }
 
-  float *resultant, **sub_As, **sub_Bs, *recv_A, *recv_B, **m_mats;
+  float *resultant, ***sub_As, ***sub_Bs, *recv_A, *recv_B, ***m_mats, *send_m;
   int destinations[MMS]; 
   int sources[MMS]; 
   int other_sources[MMS]; 
   int i, j;
   int recv_size;
   resultant = NULL;
+  const int divisions[] = {7, 7*7, 7*7*7, 7*7*7*7};
 
-  mmalloc((void**)&sub_As, MMS * sizeof(float*));
-  mmalloc((void**)&sub_Bs, MMS * sizeof(float*));
-  mmalloc((void**)&m_mats, MMS * sizeof(float*));
-
-  for(i = 0; i < MMS; ++i) {
-    destinations[i] = (world_rank + 8 * i) % world_size;
-    sources[i] = (root + 8 * i) % world_size;
-    other_sources[i] = (world_rank - 8 * i) % world_size;
-    other_sources[i] = (other_sources[i] < 0) ? world_size + other_sources[i] : other_sources[i];
-    if(world_rank == 1)
-      printf("dest: %d, source: %d\n", destinations[i], sources[i]);
-    mmalloc((void**)&sub_As[i], sizes[iter+1] * sizes[iter+1] * sizeof(float));
-    mmalloc((void**)&sub_Bs[i], sizes[iter+1] * sizes[iter+1] * sizeof(float));
-    mmalloc((void**)&m_mats[i], sizes[iter+1] * sizes[iter+1] * sizeof(float));
+  
+  
+  //divide into all of the sub matrices until tree level >= world_size
+  //send out sub matrices
+  //further divide locally
+  //multiply locally
+  //combine to original level
+  //send up
+  //send out remainder
+  //further divide locally
+  //multiply locally
+  //combine to original level
+  //send up
+  //combine to base level
+  
+  int spl_level;
+  for(i = 0; i < 4; ++i) {
+    if(divisions[i] >= world_size) {
+      spl_level = i;
+      break;
+    }
   }
-  sort(destinations, MMS);
-  sort(sources, MMS);
-  sort(other_sources, MMS);
 
-  if(world_rank == root) {
-    strassen_extract(mat_A, mat_B, sizes[iter], sizes[iter], sub_As, sub_Bs);
-  }
-
-  mmalloc((void**)&recv_A, sizes[iter+1] * sizes[iter+1] * sizeof(float));
-  mmalloc((void**)&recv_B, sizes[iter+1] * sizes[iter+1] * sizeof(float));
-
-  if(world_rank == root) {
-    int index = 0;
-    for(i = 0; i < MMS; ++i) {
-      if(destinations[i] == world_rank) {
-        index = i;
-        continue;
+  if(world_rank == 0) {
+    mmalloc((void**)&sub_As, 4 * sizeof(float**));
+    mmalloc((void**)&sub_Bs, 4 * sizeof(float**));
+    mmalloc((void**)&m_mats, 4 * sizeof(float**));
+    for(i = 0; i < 4; ++i) {
+      mmalloc((void**)&sub_As[i], divisions[i] * sizeof(float*));
+      mmalloc((void**)&sub_Bs[i], divisions[i] * sizeof(float*));
+      mmalloc((void**)&m_mats[i], divisions[i] * sizeof(float*));
+    }
+    for(i = 0; i <= spl_level; ++i) {
+      for(j = 0; j < divisions[i]; ++j) {
+        mmalloc((void**)&sub_As[i][j], sizes[i+1] * sizes[i+1] * sizeof(float));
+        mmalloc((void**)&sub_Bs[i][j], sizes[i+1] * sizes[i+1] * sizeof(float));
+        mmalloc((void**)&m_mats[i][j], sizes[i+1] * sizes[i+1] * sizeof(float));
       }
-      printf("sending out some shit\n");
-      MPI_Send(sub_As[i], sizes[iter+1] * sizes[iter+1], MPI_FLOAT, i, 0, MPI_COMM_WORLD);
-      MPI_Send(sub_Bs[i], sizes[iter+1] * sizes[iter+1], MPI_FLOAT, i, 0, MPI_COMM_WORLD);
-    }
-    m_mats[index] = strassen_mult(sub_As[index], sub_Bs[index], size, root, iter+1);
-    for(i = 0; i < MMS; ++i) {
-      printf("os %d\n", other_sources[i]);
-      if(other_sources[i] == world_rank) continue;
-      strassen_mult_helper(size, other_sources[i], iter+1);
-    }
-    printf("pizza time %d\n", world_rank);
-    for(i = 0; i < MMS; ++i) {
-      if(i == index) continue; //skip over recv from same node
-      MPI_Recv(m_mats[i], sizes[iter+1] * sizes[iter+1], MPI_FLOAT, destinations[i], 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-    mmalloc((void**)&resultant, sizes[iter] * sizes[iter] * sizeof(float));
-    float *c11, *c12, *c21, *c22;
-
-    mmalloc((void**)&c11, sizes[iter+1] * sizes[iter+1] * sizeof(float));
-    mmalloc((void**)&c12, sizes[iter+1] * sizes[iter+1] * sizeof(float));
-    mmalloc((void**)&c21, sizes[iter+1] * sizes[iter+1] * sizeof(float));
-    mmalloc((void**)&c22, sizes[iter+1] * sizes[iter+1] * sizeof(float));
-
-    matrix_sum(c11, m_mats[0], m_mats[3], sizes[iter+1], sizes[iter+1]);
-    matrix_diff(c11, c11, m_mats[4], sizes[iter+1], sizes[iter+1]);
-    matrix_sum(c11, c11, m_mats[6], sizes[iter+1], sizes[iter+1]);
-
-    matrix_sum(c12, m_mats[2], m_mats[4], sizes[iter+1], sizes[iter+1]);
-
-    matrix_sum(c21, m_mats[1], m_mats[3], sizes[iter+1], sizes[iter+1]);
-
-    matrix_sum(c11, m_mats[0], m_mats[2], sizes[iter+1], sizes[iter+1]);
-    matrix_diff(c11, c11, m_mats[1], sizes[iter+1], sizes[iter+1]);
-    matrix_sum(c11, c11, m_mats[5], sizes[iter+1], sizes[iter+1]);
-    
-    printf("Time to combine some magic\n");
-    insert_matrix(resultant, c11, 0, 0, sizes[iter], sizes[iter], sizes[iter+1], sizes[iter+1]);
-    insert_matrix(resultant, c12, 0, sizes[iter+1], sizes[iter], sizes[iter], sizes[iter+1], sizes[iter+1]);
-    insert_matrix(resultant, c21, sizes[iter+1], 0, sizes[iter], sizes[iter], sizes[iter+1], sizes[iter+1]);
-    insert_matrix(resultant, c22, sizes[iter+1], sizes[iter+1], sizes[iter], sizes[iter], sizes[iter+1], sizes[iter+1]);
-
-    FREE(c11);
-    FREE(c12);
-    FREE(c21);
-    FREE(c22);
-  } else if(contains(sources, MMS, root)) { //helper code
-    MPI_Status status_a, status_b;
-    MPI_Recv(recv_A, sizes[iter+1] * sizes[iter+1], MPI_FLOAT, root, 0, MPI_COMM_WORLD, &status_a);
-    MPI_Recv(recv_B, sizes[iter+1] * sizes[iter+1], MPI_FLOAT, root, 0, MPI_COMM_WORLD, &status_b);
-    strassen_mult_helper(size, root, iter+1);
-    int a_count, b_count;
-    MPI_Get_count(&status_a, MPI_FLOAT, &a_count);
-    MPI_Get_count(&status_b, MPI_FLOAT, &b_count);
-    printf("%d, %d\n", a_count, b_count);
-    
-    float* m_mat;
-    for(i = 0; i < MMS; ++i) {
-      if(other_sources[i] >= world_rank) {
-        break;
+      if(i == 0) {
+        strassen_extract(mat_A, mat_B, size, size, sub_As[i], sub_Bs[i]);
       } else {
-        strassen_mult_helper(size, other_sources[i], iter+1);
+        for(j = 0; j < divisions[i-1]; ++j) {
+          strassen_extract(sub_As[i-1][j], sub_Bs[i-1][j], sizes[i], sizes[i], sub_As[i] + 7 * j, sub_Bs[i] + 7 * j); //not sure if this will extract properly
+        }
       }
     }
-    m_mat = strassen_mult(recv_A, recv_B, size, world_rank, iter+1);
-    MPI_Send(m_mat, sizes[iter+1] * sizes[iter+1], MPI_FLOAT, root, 1, MPI_COMM_WORLD);
-    for(; i < MMS; ++i) {
-      if(other_sources[i] == world_rank) continue;
-      strassen_mult_helper(size, other_sources[i], iter+1);
-    }
-  } else { //helper code when proc is unecessary
-    for(i = 0; i < MMS; ++i) {
-      if(other_sources[i] == world_rank) continue;
-        strassen_mult_helper(size, other_sources[i], iter+1);
-    }
+  } else {
+    mmalloc((void**)&recv_A, sizes[spl_level+1] * sizes[spl_level+1] * sizeof(float));
+    mmalloc((void**)&recv_B, sizes[spl_level+1] * sizes[spl_level+1] * sizeof(float));
   }
-  FREE(recv_A);
-  FREE(recv_B);
-  for(i = 0; i < MMS; ++i) {
-    FREE(m_mats[i]);
-    FREE(sub_As[i]);
-    FREE(sub_Bs[i]);
+
+  int offset = 0;
+  while(offset < divisions[spl_level]) {
+    if(world_rank == 0) {
+      printf("root sending\n");
+      for(i = 1; i < world_size && i + offset < divisions[spl_level]; ++i) {
+        MPI_Send(sub_As[spl_level][offset + i], sizes[spl_level+1]*sizes[spl_level+1], MPI_FLOAT, i, 0, MPI_COMM_WORLD);
+        MPI_Send(sub_Bs[spl_level][offset + i], sizes[spl_level+1]*sizes[spl_level+1], MPI_FLOAT, i, 0, MPI_COMM_WORLD);
+      }
+      printf("root sent\n");
+      //time to locally multiply using strassens
+      m_mats[spl_level][offset] = l_strassen_mult(sub_As[spl_level][offset], sub_Bs[spl_level][offset], sizes[spl_level+1], spl_level);
+      for(i = 1; i < world_size && i + offset < divisions[spl_level]; ++i) {
+        MPI_Recv(m_mats[spl_level][offset + i], sizes[spl_level+1], MPI_FLOAT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      }
+      printf("root recv\n");
+    } else if(world_rank + offset < divisions[spl_level]) {
+      printf("%d recving\n", world_rank);
+      MPI_Recv(recv_A, sizes[spl_level+1]*sizes[spl_level+1], MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      MPI_Recv(recv_B, sizes[spl_level+1]*sizes[spl_level+1], MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      printf("lmulting\n");
+      send_m = l_strassen_mult(recv_A, recv_B, sizes[spl_level+1], spl_level);
+      MPI_Send(send_m, sizes[spl_level+1]*sizes[spl_level+1], MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
+      printf("sent\n");
+      FREE(send_m);
+    }
+    offset += world_size;
   }
-  FREE(m_mats);
-  FREE(sub_As);
-  FREE(sub_Bs);
-  printf("%d, %d returning %d\n", world_rank, root, iter);
+
+  if(world_rank == 0) {
+    //time to combine the remainder of the m_mats
+    mmalloc((void**)&resultant, size * size * sizeof(float));
+    for(i = spl_level; i >= 0; --i) {
+      if(i > 0) {
+        for(j = 0; j < divisions[i-1]; ++j) {
+            strassen_combine(m_mats[i-1][j], m_mats[i] + 7 * j, sizes[i]); //gotta combine somehow
+        }
+      } else {
+        printf("final combine\n");
+        strassen_combine(resultant, m_mats[0], size);
+      }
+    }
+    for(i = 0; i <= spl_level; ++i) {
+      for(j = 0; j < divisions[i]; ++j) {
+        FREE(sub_As[i][j]);
+        FREE(sub_Bs[i][j]);
+        FREE(m_mats[i][j]);
+      }
+      FREE(sub_As[i]);
+      FREE(sub_Bs[i]);
+    }
+    FREE(sub_As);
+    FREE(sub_Bs);
+  } else {
+    FREE(recv_A);
+    FREE(recv_B);
+  }
+
   return resultant;
 }
 
@@ -224,50 +210,55 @@ void strassen_extract(float *mat_A, float *mat_B, int rows, int cols, float** su
   FREE(a_quad);
   FREE(b_quad);
 }
-/*float *l1A, *l1B, **l2A, **l2A, **l3A, **l3B;
-  mmalloc((void**)&l1A, sizes[1] * sizes[1] * sizeof(float));
-  mmalloc((void**)&l1B, sizes[1] * sizes[1] * sizeof(float));
-  mmalloc((void**)&l2A, MMS * sizeof(float*));
-  mmalloc((void**)&l2B, MMS * sizeof(float*));
-  mmalloc((void**)&l3A, MMS * MMS * sizeof(float*));
-  mmalloc((void**)&l3B, MMS * MMS * sizeof(float*));
+
+void strassen_combine(float *resultant, float **m_mats, int size) {
+  float *c11, *c12, *c21, *c22;
+  mmalloc((void**)&c11, size/2 * size/2 * sizeof(float));
+  mmalloc((void**)&c12, size/2 * size/2 * sizeof(float));
+  mmalloc((void**)&c21, size/2 * size/2 * sizeof(float));
+  mmalloc((void**)&c22, size/2 * size/2 * sizeof(float));
+
+  matrix_sum(c11, m_mats[0], m_mats[3], size/2, size/2);
+  matrix_diff(c11, c11, m_mats[4], size/2, size/2);
+  matrix_sum(c11, c11, m_mats[6], size/2, size/2);
+
+  matrix_sum(c12, m_mats[2], m_mats[4], size/2, size/2);
+
+  matrix_sum(c21, m_mats[1], m_mats[3], size/2, size/2);
+
+  matrix_sum(c11, m_mats[0], m_mats[2], size/2, size/2);
+  matrix_diff(c11, c11, m_mats[1], size/2, size/2);
+  matrix_sum(c11, c11, m_mats[5], size/2, size/2);
+  
+  insert_matrix(resultant, c11, 0, 0, size, size, size/2, size/2);
+  insert_matrix(resultant, c12, 0, size/2, size, size, size/2, size/2);
+  insert_matrix(resultant, c21, size/2, 0, size, size, size/2, size/2);
+  insert_matrix(resultant, c22, size/2, size/2, size, size, size/2, size/2);
+
+  FREE(c11);
+  FREE(c12);
+  FREE(c21);
+  FREE(c22);
+}
+
+float* l_strassen_mult(float* mat_A, float *mat_B, int size, int iter) {
+  if(iter == 4) {
+    return matrix_mult(mat_A, size, size, mat_B, size, size);
+  }
+  float **sub_As, **sub_Bs, **m_mats, *resultant;
+  int i;
+  mmalloc((void**)&sub_As, 7 * sizeof(float*));
+  mmalloc((void**)&sub_Bs, 7 * sizeof(float*));
+  mmalloc((void**)&m_mats, 7 * sizeof(float*));
   for(i = 0; i < MMS; ++i) {
-    mmalloc((void**)&l2A[i], sizes[2] * sizes[2] * sizeof(float));
-    mmalloc((void**)&l2B[i], sizes[2] * sizes[2] * sizeof(float));
+    mmalloc((void**)&sub_As[i], size * size / 4 * sizeof(float));
+    mmalloc((void**)&sub_Bs[i], size * size / 4 * sizeof(float));
   }
-  for(i = 0; i < MMS*MMS; ++i) {
-    mmalloc((void**)&l3A[i], sizes[3] * sizes[3] * sizeof(float));
-    mmalloc((void**)&l3B[i], sizes[3] * sizes[3] * sizeof(float));
+  strassen_extract(mat_A, mat_B, size, size, sub_As, sub_Bs);
+  for(i = 0; i < MMS; ++i) {
+    m_mats[i] = l_strassen_mult(sub_As[i], sub_Bs[i], size/2, iter+1);
   }
-  if(world_rank == 0) {
-    for(i = 1; i < MMS; ++i) {
-      MPI_Send(sub_As[i], sizes[1] * sizes[1], MPI_FLOAT, i, 0, MPI_COMM_WORLD);
-      MPI_Send(sub_Bs[i], sizes[1] * sizes[1], MPI_FLOAT, i, 0, MPI_COMM_WORLD);
-    }
-    memcpy(l1A, sub_As[0], sizes[1] * sizes[1] * sizeof(float));
-    memcpy(l1B, sub_Bs[0], sizes[1] * sizes[1] * sizeof(float));
-  }
-
-  float *send_buf, *A_buf, *B_buf;
-  int cont = 1;
-  int skipped = 0;
-  int recv_size;
-  MPI_Status status;
-  while(cont) {
-    if(world_rank > 0 || skipped) {
-      j = 0;
-      while(sources[j] != world_rank) {
-        MPI_Probe(sources[j], 0, MPI_COMM_WORLD, &status);
-        MPI_Get_count(&status, MPI_FLOAT, &recv_size);
-        mmalloc((void**)&A_buf, recv_size * sizeof(float));
-        mmalloc((void**)&B_buf, recv_size * sizeof(float));
-        MPI_Recv(A_buf, recv_size, MPI_FLOAT, sources[j], 
-
-        MPI_Probe(sources[j], 0, MPI_COMM_WORLD, &status);
-
-    } else {
-      skipped = 1;
-    }
-
-  }*/
-
+  mmalloc((void**)&resultant, size * size * sizeof(float));
+  strassen_combine(resultant, m_mats, size);
+  return resultant;
+}

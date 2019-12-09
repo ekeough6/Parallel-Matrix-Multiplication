@@ -23,17 +23,17 @@ int main(int argc,  char** argv) {
         float* mat = load_matrix(input[i], &r, &c);
         float* mat1 = load_matrix(input2[i], &r, &c);
         double time = MPI_Wtime();
-        printf("%6.3f\n", mat[0]);
-        float* resultant = strassen_mult(mat, mat1, sizes[i], sizes[i]);
+        //printf("%6.3f\n", mat[0]);
+        float* resultant = strassen_mult(mat, mat1, sizes[i], 0, 0);
 
         printf("2^%d*24: %f\n", i, MPI_Wtime() - time);
-        save_matrix(resultant, sizes[i], sizes[i], output[i]);
+        //save_matrix(resultant, sizes[i], sizes[i], output[i]);
 
         FREE(mat);
         FREE(resultant);
         FREE(mat1);
       } else {
-        strassen_mult_helper(sizes[i], sizes[i]);
+        strassen_mult_helper(sizes[i], 0, 0);
       }
   }
   MPI_Finalize();

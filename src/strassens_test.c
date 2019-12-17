@@ -16,18 +16,17 @@ int main(int argc,  char** argv) {
   char* output[3] = {"strassens_output0.txt", "strassens_output1.txt", "strassens_output2.txt"};
   int i, j, k;
 
-  for(i = 0; i < 1; ++i) {
+  for(i = 0; i < 3; ++i) {
       if(world_rank == 0) {
         int r, c;
 
         float* mat = load_matrix(input[i], &r, &c);
         float* mat1 = load_matrix(input2[i], &r, &c);
         double time = MPI_Wtime();
-        //printf("%6.3f\n", mat[0]);
         float* resultant = strassen_mult(mat, mat1, sizes[i], 0, 0);
 
-        printf("2^%d*24: %f\n", i, MPI_Wtime() - time);
-        //save_matrix(resultant, sizes[i], sizes[i], output[i]);
+        printf("2^%d: %f\n", 8 + i*2, MPI_Wtime() - time);
+        save_matrix(resultant, sizes[i], sizes[i], output[i]);
 
         FREE(mat);
         FREE(resultant);

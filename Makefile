@@ -9,6 +9,7 @@ TESTSOURCES=src/tester.c src/matrix.c
 GENSOURCES=src/matrix_gen.c src/matrix.c
 SGENSOURCES=src/matrix_gen_strassen.c src/matrix.c
 COMPSOURCES=src/matrix_compare.c src/matrix.c
+SCOMPSOURCES=src/matrix_compare_strassen.c src/matrix.c
 RINGSOURCES=src/ring_test.c src/ring.c src/matrix.c src/mpi_matrix.c
 BMRSOURCES=src/bmr.c src/matrix.c src/mpi_matrix.c src/bmr_test.c
 STRASSENSOURCES=src/strassens.c src/matrix.c src/mpi_matrix.c src/strassens_test.c
@@ -24,10 +25,11 @@ TESTEXEC=test
 GENEXEC=mat_gen
 SGENEXEC=mat_gen_strassen
 COMPEXEC=mat_comp
+SCOMPEXEC=mat_comp_strassen
 RINGEXEC=ring
 BMREXEC=bmr
 STRASSENEXEC=strassens
-EXECS=$(TESTEXEC) $(RINGEXEC) $(BMREXEC) $(GENEXEC) $(COMPEXEC) $(STRASSENEXEC)
+EXECS=$(TESTEXEC) $(RINGEXEC) $(BMREXEC) $(GENEXEC) $(COMPEXEC) $(STRASSENEXEC) $(SGENEXEC) $(SCOMPEXEC)
 
 $(TESTEXEC): $(TESTSOURCES)
 	$(CC) $(CFLAGS) $(TESTSOURCES) -o $@
@@ -41,6 +43,9 @@ $(SGENEXEC): $(SGENSOURCES)
 $(COMPEXEC): $(COMPSOURCES)
 	$(CC) $(CFLAGS) $(COMPSOURCES) -o $@
 
+$(SCOMPEXEC): $(SCOMPSOURCES)
+	$(CC) $(CFLAGS) $(SCOMPSOURCES) -o $@
+
 $(RINGEXEC): $(RINGSOURCES)
 	$(MPICC) $(CFLAGS) $(RINGSOURCES) -o $@
 
@@ -48,7 +53,7 @@ $(BMREXEC): $(BMRSOURCES)
 	$(MPICC) $(CFLAGS) $(BMRSOURCES) -o $@ -lm
 
 $(STRASSENEXEC): $(STRASSENSOURCES)
-	$(MPICC) $(CFLAGS) $(STRASSENSOURCES) -o $@ -lm -g
+	$(MPICC) $(CFLAGS) $(STRASSENSOURCES) -o $@ -lm
 
 $(TESTEXEC)-gpu: $(TESTSOURCES)
 	$(NVCC) $(NVCFLAGS) $(CUDASOURCES) -o $(CUDAOBJECTS)
@@ -60,6 +65,13 @@ $(TESTEXEC)-gpu: $(TESTSOURCES)
 $(GENEXEC)-gpu: $(GPUSOURCES)
 	$(NVCC) $(NVCFLAGS) $(CUDASOURCES) -o $(CUDAOBJECTS)
 	$(CC) $(CFLAGS) -D USE_GPU -c src/matrix_gen.c  -o mat_gen.o
+	$(CC) $(CFLAGS) -D USE_GPU -c src/matrix.c  -o matrix.o
+	$(CC) $(CUDAOBJECTS) mat_gen.o matrix.o $(CUDAFLAG) -o $@
+	rm *.o
+
+$(SGENEXEC)-gpu: $(GPUSOURCES)
+	$(NVCC) $(NVCFLAGS) $(CUDASOURCES) -o $(CUDAOBJECTS)
+	$(CC) $(CFLAGS) -D USE_GPU -c src/matrix_gen_strassen.c  -o mat_gen.o
 	$(CC) $(CFLAGS) -D USE_GPU -c src/matrix.c  -o matrix.o
 	$(CC) $(CUDAOBJECTS) mat_gen.o matrix.o $(CUDAFLAG) -o $@
 	rm *.o
@@ -93,7 +105,7 @@ $(STRASSENEXEC)-gpu: $(STRASSENSOURCES)
 
 
 clean:
-	rm $(EXECS) test-gpu ring-gpu bmr-gpu mat_gen-gpu 
+	rm $(EXECS) test-gpu ring-gpu bmr-gpu mat_gen-gpu strassens-gpu mat_gen_strassen-gpu
 
 all:
 

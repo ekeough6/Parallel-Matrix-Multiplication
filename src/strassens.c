@@ -36,6 +36,9 @@ float* strassen_mult(float* mat_A, float* mat_B, int size, int root, int iter) {
   int world_size, world_rank;
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  if(world_size == 1) {
+    return l_strassen_mult(mat_A, mat_B, size, 0);
+  }
 
   const int size_1 = size / 2; //at this level tag is always 0
   const int size_2 = size_1 / 2; //at this level tag is world_rank_1+1
@@ -107,26 +110,20 @@ float* strassen_mult(float* mat_A, float* mat_B, int size, int root, int iter) {
   int offset = 0;
   while(offset < divisions[spl_level]) {
     if(world_rank == 0) {
-      printf("root sending\n");
       for(i = 1; i < world_size && i + offset < divisions[spl_level]; ++i) {
         MPI_Send(sub_As[spl_level][offset + i], sizes[spl_level+1]*sizes[spl_level+1], MPI_FLOAT, i, 0, MPI_COMM_WORLD);
         MPI_Send(sub_Bs[spl_level][offset + i], sizes[spl_level+1]*sizes[spl_level+1], MPI_FLOAT, i, 0, MPI_COMM_WORLD);
       }
-      printf("root sent\n");
       //time to locally multiply using strassens
       m_mats[spl_level][offset] = l_strassen_mult(sub_As[spl_level][offset], sub_Bs[spl_level][offset], sizes[spl_level+1], spl_level);
       for(i = 1; i < world_size && i + offset < divisions[spl_level]; ++i) {
-        MPI_Recv(m_mats[spl_level][offset + i], sizes[spl_level+1], MPI_FLOAT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(m_mats[spl_level][offset + i], sizes[spl_level+1]*sizes[spl_level+1], MPI_FLOAT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       }
-      printf("root recv\n");
     } else if(world_rank + offset < divisions[spl_level]) {
-      printf("%d recving\n", world_rank);
       MPI_Recv(recv_A, sizes[spl_level+1]*sizes[spl_level+1], MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       MPI_Recv(recv_B, sizes[spl_level+1]*sizes[spl_level+1], MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-      printf("lmulting\n");
       send_m = l_strassen_mult(recv_A, recv_B, sizes[spl_level+1], spl_level);
       MPI_Send(send_m, sizes[spl_level+1]*sizes[spl_level+1], MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
-      printf("sent\n");
       FREE(send_m);
     }
     offset += world_size;
@@ -141,7 +138,6 @@ float* strassen_mult(float* mat_A, float* mat_B, int size, int root, int iter) {
             strassen_combine(m_mats[i-1][j], m_mats[i] + 7 * j, sizes[i]); //gotta combine somehow
         }
       } else {
-        printf("final combine\n");
         strassen_combine(resultant, m_mats[0], size);
       }
     }
@@ -171,7 +167,6 @@ void strassen_mult_helper(int size, int root, int iter) {
 }
 
 void strassen_extract(float *mat_A, float *mat_B, int rows, int cols, float** sub_As, float** sub_Bs) {
-  //printf("%d, %d\n", rows, cols);
   float **a_quad, **b_quad;
   mmalloc((void**)&a_quad, 4 * sizeof(float*));
   mmalloc((void**)&b_quad, 4 * sizeof(float*));
@@ -184,12 +179,11 @@ void strassen_extract(float *mat_A, float *mat_B, int rows, int cols, float** su
     for(j = 0; j < 2; ++j) {
       extract_matrix(mat_A, a_quad[i * 2 + j], rows/2 * i, cols/2 * j, rows/2, cols/2, cols);
       extract_matrix(mat_B, b_quad[i * 2 + j], rows/2 * i, cols/2 * j, rows/2, cols/2, cols);
-      //printf("%f\n", a_quad[i * 2 +j][0]);
     }
   }
   matrix_sum(sub_As[0], a_quad[0], a_quad[3], rows/2, cols/2);
   matrix_sum(sub_As[1], a_quad[2], a_quad[3], rows/2, cols/2);
-  memcpy(sub_As[2], a_quad[1], rows * cols / 4 * sizeof(float));
+  memcpy(sub_As[2], a_quad[0], rows * cols / 4 * sizeof(float));
   memcpy(sub_As[3], a_quad[3], rows * cols / 4 * sizeof(float));
   matrix_sum(sub_As[4], a_quad[0], a_quad[1], rows/2, cols/2);
   matrix_diff(sub_As[5], a_quad[2], a_quad[0], rows/2, cols/2);
@@ -202,7 +196,6 @@ void strassen_extract(float *mat_A, float *mat_B, int rows, int cols, float** su
   memcpy(sub_Bs[4], b_quad[3], rows * cols / 4 * sizeof(float));
   matrix_sum(sub_Bs[5], b_quad[0], b_quad[1], rows/2, cols/2);
   matrix_sum(sub_Bs[6], b_quad[2], b_quad[3], rows/2, cols/2);
-  //printf("%f\n", sub_As[0][0]);
   for(i = 0; i < 4; ++i) {
     FREE(a_quad[i]);
     FREE(b_quad[i]);
@@ -226,9 +219,9 @@ void strassen_combine(float *resultant, float **m_mats, int size) {
 
   matrix_sum(c21, m_mats[1], m_mats[3], size/2, size/2);
 
-  matrix_sum(c11, m_mats[0], m_mats[2], size/2, size/2);
-  matrix_diff(c11, c11, m_mats[1], size/2, size/2);
-  matrix_sum(c11, c11, m_mats[5], size/2, size/2);
+  matrix_sum(c22, m_mats[0], m_mats[2], size/2, size/2);
+  matrix_diff(c22, c22, m_mats[1], size/2, size/2);
+  matrix_sum(c22, c22, m_mats[5], size/2, size/2);
   
   insert_matrix(resultant, c11, 0, 0, size, size, size/2, size/2);
   insert_matrix(resultant, c12, 0, size/2, size, size, size/2, size/2);
